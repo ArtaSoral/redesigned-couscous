@@ -6,10 +6,11 @@
   <title>Fairlawn Commons Announcements</title>
   <style>
     :root {
-      --fg: #111827; /* slate-900 */
-      --muted: #4b5563; /* gray-600 */
-      --border: #e5e7eb; /* gray-200 */
-      --accent: #111827;
+      --fg: #0f172a;      /* slate-900-ish */
+      --muted: #475569;   /* slate-600 */
+      --border: #e5e7eb;  /* gray-200 */
+      --accent: #0f172a;  /* dark navy for headings/buttons */
+      --bg-subtle: #fafafa;
     }
     html, body { height: 100%; }
     body {
@@ -19,8 +20,8 @@
       background: #fff;
     }
     .container { max-width: 850px; margin: 24px auto; padding: 0 16px 120px; }
-    header { display: grid; gap: 6px; border-bottom: 2px solid var(--border); padding-bottom: 12px; margin-bottom: 16px; }
-    .title { font-size: 28px; font-weight: 800; letter-spacing: 0.2px; }
+    header { display: grid; gap: 6px; border-bottom: 2px solid var(--border); padding-bottom: 16px; margin-bottom: 18px; }
+    .title { font-size: 30px; font-weight: 900; letter-spacing: 0.2px; color: var(--accent); }
     .subtitle { color: var(--muted); font-size: 14px; }
 
     .grid { display: grid; gap: 12px; }
@@ -42,30 +43,72 @@
     .btn.secondary { background: transparent; color: var(--accent); }
 
     /* Printable layout */
-    .sheet { border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
-    .sheet h1 { font-size: 24px; margin: 0; }
-    .sheet .meta { display: flex; gap: 8px; flex-wrap: wrap; font-size: 14px; color: var(--muted); }
-    .times { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 10px; }
-    .times .box { border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+    .sheet { border: 1px solid var(--border); border-radius: 14px; padding: 24px; }
+    .sheet h1 { margin: 0 0 4px 0; }
+    .sheet .meta { display: flex; gap: 8px; flex-wrap: wrap; font-size: 14px; color: var(--muted); align-items: baseline; }
+    .sheet .meta .dot { color: var(--muted); }
+    .sheet .meta strong { color: var(--fg); }
+    
+    /* Parsha line: Hebrew bigger than English */
+    #sheet-parsha { margin-top: 2px; font-weight: 800; }
+    #sheet-parsha .parsha-he { font-size: 28px; letter-spacing: 0.2px; }
+    #sheet-parsha .parsha-en { font-size: 20px; font-weight: 700; margin-left: 8px; }
+    #sheet-parsha .sep { margin: 0 8px; color: var(--muted); }
+    
+    /* Times grid: centered and balanced */
+    .times {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+      margin-top: 14px;
+      max-width: 720px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .times .box { border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
     .times .box h4 { margin: 0 0 8px 0; font-size: 16px; }
+    
+    /* Emphasize numbers more than labels */
     .times .row { grid-template-columns: 1fr 1fr; }
-    .ann { margin-top: 14px; border: 1px dashed var(--border); border-radius: 12px; padding: 12px; }
-    .ann h4 { margin: 0 0 6px 0; }
+    .times .row div strong { color: var(--muted); font-weight: 700; }
+    .times .row div span { font-size: 18px; font-weight: 800; letter-spacing: 0.2px; }
+    
+    /* Announcements block */
+    .ann {
+      margin-top: 18px;
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      border-radius: 12px;
+      padding: 14px;
+      background: var(--bg-subtle);
+      line-height: 1.45;
+    }
+    .ann h4 { margin: 0 0 8px 0; font-size: 16px; letter-spacing: 0.2px; }
+    .ann div + div { margin-top: 6px; }
 
+    /* Print */
+    @page {
+      size: Letter;
+      margin: 0.5in;
+    }
     @media print {
       body { background: #fff; }
       .container { padding-bottom: 0; }
-      .print-bar, .config, #api-error { display: none !important; }
+      .print-bar, .config { display: none !important; }
       .sheet { border: none; padding: 0; }
+      .sheet, .sheet * { break-inside: avoid; page-break-inside: avoid; }
+      /* Optional: slightly scale down to ensure single page even on content spikes */
+      /* html { zoom: 0.98; } */
     }
+    /* NOTE: The browser's print dialog controls header/footer (URL, timestamp, page numbers).
+       Instruct users to disable "Headers and footers" for a clean handout. */
   </style>
 </head>
 <body>
   <div class="container">
     <header>
-      <div class="title">Fairlawn Commons Announcements</div>
-      <div class="subtitle">Fair Lawn, NJ 07410</div>
-      <!-- Diaspora; Shkiyah = Astronomical Sunset -->
+      <div class="title">Shabbat Announcements</div>
+      <div class="subtitle">Fair Lawn, NJ 07410 · Diaspora · Shkiyah = astronomical sunset</div>
     </header>
 
     <!-- CONFIGURATION / INPUTS -->
@@ -109,11 +152,7 @@
       </div>
       <h1 id="sheet-parsha">—</h1>
       <div class="meta" id="sheet-meta">
-        <span id="sheet-he-date-en">—</span>
-        <span>·</span>
-        <span id="sheet-he-date-he">—</span>
-        <span>·</span>
-        <span>Shkiyah: <strong id="sheet-sunset">—</strong></span>
+        <!-- Populated dynamically by setSheet() -->
       </div>
 
       <div class="times">
@@ -347,10 +386,17 @@
 
     function setSheet(shabbatDate, data){
       $('sheet-date-kicker').textContent = `Shabbat Sheet for ${fmtDate(shabbatDate)}`;
-      $('sheet-parsha').textContent = `${data.parshaHe} | ${data.parshaEn}`;
-      $('sheet-he-date-en').textContent = data.heEn;
-      $('sheet-he-date-he').textContent = data.heHe;
-      $('sheet-sunset').textContent = data.sunset;
+      $('sheet-parsha').innerHTML = `
+        <span class="parsha-he">${data.parshaHe}</span>
+        <span class="sep">|</span>
+        <span class="parsha-en">${data.parshaEn}</span>
+      `;
+      
+      const metaBits = [];
+      if (data.heEn) metaBits.push(data.heEn);
+      if (data.heHe) metaBits.push(data.heHe);
+      if (data.sunset) metaBits.push(`Shkiyah: <strong>${data.sunset}</strong>`);
+      $('sheet-meta').innerHTML = metaBits.join(' <span class="dot">·</span> ');
     }
 
     async function refreshAll(){
