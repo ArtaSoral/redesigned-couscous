@@ -32,3 +32,273 @@
     label { font-weight: 600; }
     input[type="text"], textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; }
     textarea { min-height: 120px; resize: vertical; }
+
+    .muted { color: var(--muted); }
+    .kicker { text-transform: uppercase; letter-spacing: 1px; font-size: 12px; color: var(--muted); }
+
+    .print-bar { position: sticky; bottom: 0; left: 0; right: 0; background: #ffffffcc; backdrop-filter: blur(6px); border-top: 1px solid var(--border); padding: 12px 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+    .btn { appearance: none; border: 1px solid var(--accent); background: var(--accent); color: white; padding: 10px 14px; border-radius: 10px; font-weight: 700; cursor: pointer; }
+    .btn.secondary { background: transparent; color: var(--accent); }
+
+    /* Printable layout */
+    .sheet { border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+    .sheet h1 { font-size: 24px; margin: 0; }
+    .sheet .meta { display: flex; gap: 8px; flex-wrap: wrap; font-size: 14px; color: var(--muted); }
+    .times { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 10px; }
+    .times .box { border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+    .times .box h4 { margin: 0 0 8px 0; font-size: 16px; }
+    .times .row { grid-template-columns: 1fr 1fr; }
+    .ann { margin-top: 14px; border: 1px dashed var(--border); border-radius: 12px; padding: 12px; }
+    .ann h4 { margin: 0 0 6px 0; }
+
+    @media print {
+      body { background: #fff; }
+      .container { padding-bottom: 0; }
+      .print-bar, .config { display: none !important; }
+      .sheet { border: none; padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="title">Weekly Synagogue Announcements</div>
+      <div class="subtitle">Fair Lawn, NJ 07410 · Diaspora · Shkiyah = astronomical sunset</div>
+    </header>
+
+    <!-- CONFIGURATION / INPUTS -->
+    <section class="config grid">
+      <div class="card">
+        <h3>1) Manual Times</h3>
+        <div class="row">
+          <div class="grid">
+            <div class="pair"><label for="erev-mincha">Erev Shabbat Mincha</label><input id="erev-mincha" type="text" placeholder="e.g., 7:00 PM"></div>
+            <div class="pair"><label for="erev-maariv">Erev Shabbat Maariv</label><input id="erev-maariv" type="text" placeholder="e.g., 8:15 PM"></div>
+          </div>
+          <div class="grid">
+            <div class="pair"><label for="shabbat-mincha">Shabbat Mincha</label><input id="shabbat-mincha" type="text" placeholder="e.g., 6:55 PM"></div>
+            <div class="pair"><label for="shabbat-maariv">Shabbat Maariv</label><input id="shabbat-maariv" type="text" placeholder="e.g., 8:50 PM"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>2) Optional Announcements</h3>
+        <div class="pair" style="grid-template-columns: 1fr; align-items: start;">
+          <textarea id="announcements" placeholder="Type announcements here…&#10;• Example: Mazal tov to …&#10;• Example: Shiur this week …"></textarea>
+        </div>
+        <div class="muted">If left blank, the announcements box will be hidden on the sheet.</div>
+      </div>
+    </section>
+
+    <!-- PRINTABLE SHEET PREVIEW -->
+    <section class="sheet" id="sheet">
+      <div class="kicker" id="sheet-date-kicker">Loading…</div>
+      <h1 id="sheet-parsha">—</h1>
+      <div class="meta" id="sheet-meta">
+        <span id="sheet-he-date-en">—</span>
+        <span>·</span>
+        <span id="sheet-he-date-he">—</span>
+        <span>·</span>
+        <span>Shkiyah: <strong id="sheet-sunset">—</strong></span>
+      </div>
+
+      <div class="times">
+        <div class="box">
+          <h4>Erev Shabbat</h4>
+          <div class="row">
+            <div><strong>Mincha:</strong> <span id="out-erev-mincha">—</span></div>
+            <div><strong>Maariv:</strong> <span id="out-erev-maariv">—</span></div>
+          </div>
+        </div>
+        <div class="box">
+          <h4>Shabbat</h4>
+          <div class="row">
+            <div><strong>Mincha:</strong> <span id="out-shabbat-mincha">—</span></div>
+            <div><strong>Maariv:</strong> <span id="out-shabbat-maariv">—</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ann" id="ann-box" style="display:none;">
+        <h4>Announcements</h4>
+        <div id="ann-content"></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="print-bar">
+    <div class="muted">Preview updates as you type. Click print to generate a PDF.</div>
+    <div>
+      <button class="btn secondary" id="refresh-btn" title="Recalculate upcoming Shabbat & data">Refresh</button>
+      <button class="btn" onclick="window.print()">Print PDF</button>
+    </div>
+  </div>
+
+  <script>
+    // === Configuration ===
+    const ZIP = '07410';
+    const TZID = 'America/New_York';
+
+    // DOM helpers
+    const $ = (id) => document.getElementById(id);
+
+    // Bind manual inputs to preview
+    ['erev-mincha','erev-maariv','shabbat-mincha','shabbat-maariv'].forEach(id => {
+      const input = $(id); const out = $('out-' + id);
+      const sync = () => { out.textContent = input.value.trim() || '—'; saveDraft(); };
+      input.addEventListener('input', sync);
+      sync();
+    });
+
+    // Announcements show/hide
+    const ann = $('announcements');
+    const annBox = $('ann-box');
+    const annContent = $('ann-content');
+    function updateAnnouncements() {
+      const txt = ann.value.trim();
+      if (!txt) { annBox.style.display = 'none'; annContent.innerHTML = ''; }
+      else {
+        annBox.style.display = 'block';
+        // Simple formatting: split lines, bullets if prefixed, otherwise paragraphs
+        const lines = txt.split(/\n+/).map(s => s.trim()).filter(Boolean);
+        annContent.innerHTML = lines.map(line => {
+          if (/^[•*-]/.test(line)) return `<div>• ${escapeHtml(line.replace(/^[•*-]\s*/,''))}</div>`;
+          return `<div>${escapeHtml(line)}</div>`;
+        }).join('');
+      }
+      saveDraft();
+    }
+    ann.addEventListener('input', updateAnnouncements);
+
+    function escapeHtml(s){
+      return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+    }
+
+    // Draft persistence in localStorage
+    function saveDraft(){
+      const data = {
+        erevMincha: $('erev-mincha').value,
+        erevMaariv: $('erev-maariv').value,
+        shMincha: $('shabbat-mincha').value,
+        shMaariv: $('shabbat-maariv').value,
+        ann: ann.value
+      };
+      localStorage.setItem('weekly-ann-draft', JSON.stringify(data));
+    }
+    function loadDraft(){
+      try {
+        const d = JSON.parse(localStorage.getItem('weekly-ann-draft')||'{}');
+        if (d.erevMincha) $('erev-mincha').value = d.erevMincha;
+        if (d.erevMaariv) $('erev-maariv').value = d.erevMaariv;
+        if (d.shMincha) $('shabbat-mincha').value = d.shMincha;
+        if (d.shMaariv) $('shabbat-maariv').value = d.shMaariv;
+        if (d.ann) ann.value = d.ann;
+      } catch {}
+    }
+
+    // Compute upcoming Shabbat date (Saturday). Adjust if currently Saturday after today's sunset.
+    async function computeUpcomingShabbat(){
+      const now = new Date();
+      const dow = now.getDay(); // 0=Sun ... 6=Sat
+      // Start with next Saturday relative to today
+      let daysUntilSat = (6 - dow + 7) % 7; // 0..6
+      // If today is Saturday, we need to check if it's after sunset; if so, push to next week
+      if (daysUntilSat === 0){
+        const afterSunset = await isAfterTodaySunset(now);
+        if (afterSunset) daysUntilSat = 7; // move to next week
+      }
+      const target = new Date(now);
+      target.setDate(now.getDate() + daysUntilSat);
+      target.setHours(12,0,0,0); // noon to avoid DST edge cases
+      return target;
+    }
+
+    async function isAfterTodaySunset(now){
+      try {
+        const y = now.getFullYear(); const m = String(now.getMonth()+1).padStart(2,'0'); const d = String(now.getDate()).padStart(2,'0');
+        const url = `https://www.hebcal.com/zmanim?cfg=json&zip=${ZIP}&date=${y}-${m}-${d}&timezid=${encodeURIComponent(TZID)}`;
+        const res = await fetch(url);
+        const json = await res.json();
+        const sunsetIso = json.times && json.times.sunset; // ISO string
+        if (!sunsetIso) return false;
+        const sunset = new Date(sunsetIso);
+        return now.getTime() >= sunset.getTime();
+      } catch { return false; }
+    }
+
+    // Format helpers
+    const fmtTime = (iso) => {
+      const d = new Date(iso);
+      return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    };
+    const fmtDate = (d) => d.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+    async function loadHebcalData(shabbatDate){
+      const gy = shabbatDate.getFullYear();
+      const gm = String(shabbatDate.getMonth()+1).padStart(2,'0');
+      const gd = String(shabbatDate.getDate()).padStart(2,'0');
+
+      const [zmanim, calendar, conv] = await Promise.all([
+        fetch(`https://www.hebcal.com/zmanim?cfg=json&zip=${ZIP}&date=${gy}-${gm}-${gd}&timezid=${encodeURIComponent(TZID)}`).then(r=>r.json()).catch(()=>({})),
+        fetch(`https://www.hebcal.com/hebcal?cfg=json&v=1&maj=on&min=on&mod=on&nx=on&mf=on&ss=on&s=on&geo=zip&zip=${ZIP}&m=50&leyning=on&year=${gy}&month=${gm}`).then(r=>r.json()).catch(()=>({})),
+        fetch(`https://www.hebcal.com/converter?cfg=json&g2h=1&gy=${gy}&gm=${gm}&gd=${gd}`).then(r=>r.json()).catch(()=>({}))
+      ]);
+
+      // Shkiyah (sunset)
+      const sunset = (zmanim.times && zmanim.times.sunset) ? fmtTime(zmanim.times.sunset) : '—';
+
+      // Parsha or holiday for the exact Shabbat date
+      let parshaEn = '—';
+      let parshaHe = '—';
+      try {
+        const events = (calendar.items || []).filter(ev => ev.date && ev.date.startsWith(`${gy}-${gm}-${gd}`));
+        // Priority: holiday (maj/min/mod) > parashat
+        const holiday = events.find(ev => (ev.category === 'holiday' || ev.category === 'roshchodesh' || ev.subcat === 'holiday'));
+        const sedra = events.find(ev => /parashat/i.test(ev.title || ''));
+        const chosen = holiday || sedra || events[0];
+        if (chosen){
+          // English: If Parashat X -> Ashkenazi transliteration already provided by Hebcal title
+          parshaEn = chosen.title || '—';
+          parshaEn = parshaEn.replace(/^Parashat\s+/, 'Parsha ');
+          parshaHe = chosen.hebrew || '—';
+        }
+      } catch {}
+
+      // Hebrew date (both forms)
+      const heEn = (conv && conv.hd && conv.hm && conv.hy) ? `${conv.hd} ${conv.hm} ${conv.hy}` : '—';
+      const heHe = (conv && conv.hebrew) ? conv.hebrew : '—';
+
+      return { sunset, parshaEn, parshaHe, heEn, heHe };
+    }
+
+    function setSheet(shabbatDate, data){
+      $('sheet-date-kicker').textContent = `Shabbat Sheet for ${fmtDate(shabbatDate)}`;
+      $('sheet-parsha').textContent = `${data.parshaHe} | ${data.parshaEn}`;
+      $('sheet-he-date-en').textContent = data.heEn;
+      $('sheet-he-date-he').textContent = data.heHe;
+      $('sheet-sunset').textContent = data.sunset;
+    }
+
+    async function refreshAll(){
+      $('sheet-date-kicker').textContent = 'Loading…';
+      const shDate = await computeUpcomingShabbat();
+      const data = await loadHebcalData(shDate);
+      setSheet(shDate, data);
+      updateAnnouncements();
+      // Sync manual outputs once more
+      ['erev-mincha','erev-maariv','shabbat-mincha','shabbat-maariv'].forEach(id => {
+        const input = $(id); const out = $('out-' + id);
+        out.textContent = input.value.trim() || '—';
+      });
+    }
+
+    $('refresh-btn').addEventListener('click', refreshAll);
+
+    // Init
+    loadDraft();
+    updateAnnouncements();
+    refreshAll();
+  </script>
+</body>
+</html>
