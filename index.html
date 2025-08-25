@@ -30,7 +30,8 @@
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .pair { display: grid; grid-template-columns: 140px 1fr; gap: 10px; align-items: center; }
     label { font-weight: 600; }
-    input[type="text"], textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; }
+    input[type="text"], input[type="time"], textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; }
+    input[type="time"] { width: 140px; }
     textarea { min-height: 120px; resize: vertical; }
 
     .muted { color: var(--muted); }
@@ -72,12 +73,12 @@
         <h3>1) Manual Times</h3>
         <div class="row">
           <div class="grid">
-            <div class="pair"><label for="erev-mincha">Erev Shabbat Mincha</label><input id="erev-mincha" type="text" placeholder="e.g., 7:00 PM"></div>
-            <div class="pair"><label for="erev-maariv">Erev Shabbat Maariv</label><input id="erev-maariv" type="text" placeholder="e.g., 8:15 PM"></div>
+            <div class="pair"><label for="erev-mincha">Erev Shabbat Mincha</label><input id="erev-mincha" type="time" value="18:30"></div>
+            <div class="pair"><label for="erev-maariv">Erev Shabbat Maariv</label><input id="erev-maariv" type="time" value="19:30"></div>
           </div>
           <div class="grid">
-            <div class="pair"><label for="shabbat-mincha">Shabbat Mincha</label><input id="shabbat-mincha" type="text" placeholder="e.g., 6:55 PM"></div>
-            <div class="pair"><label for="shabbat-maariv">Shabbat Maariv</label><input id="shabbat-maariv" type="text" placeholder="e.g., 8:50 PM"></div>
+            <div class="pair"><label for="shabbat-mincha">Shabbat Mincha</label><input id="shabbat-mincha" type="time" value="18:55"></div>
+            <div class="pair"><label for="shabbat-maariv">Shabbat Maariv</label><input id="shabbat-maariv" type="time" value="20:00"></div>
           </div>
         </div>
       </div>
@@ -159,10 +160,23 @@
     const annBox = $('ann-box');
     const annContent = $('ann-content');
 
+    // Format time from 24hr to 12hr with AM/PM
+    function formatTimeDisplay(timeValue) {
+      if (!timeValue) return '—';
+      const [hours, minutes] = timeValue.split(':');
+      const hour24 = parseInt(hours);
+      const hour12 = hour24 === 0 ? 12 : (hour24 > 12 ? hour24 - 12 : hour24);
+      const ampm = hour24 >= 12 ? 'PM' : 'AM';
+      return `${hour12}:${minutes} ${ampm}`;
+    }
+
     // Bind manual inputs to preview
     ['erev-mincha','erev-maariv','shabbat-mincha','shabbat-maariv'].forEach(id => {
       const input = $(id); const out = $('out-' + id);
-      const sync = () => { out.textContent = input.value.trim() || '—'; saveDraft(); };
+      const sync = () => { 
+        out.textContent = formatTimeDisplay(input.value) || '—'; 
+        saveDraft(); 
+      };
       input.addEventListener('input', sync);
       sync();
     });
@@ -347,7 +361,7 @@
       // Sync manual outputs once more
       ['erev-mincha','erev-maariv','shabbat-mincha','shabbat-maariv'].forEach(id => {
         const input = $(id); const out = $('out-' + id);
-        out.textContent = input.value.trim() || '—';
+        out.textContent = formatTimeDisplay(input.value) || '—';
       });
     }
 
