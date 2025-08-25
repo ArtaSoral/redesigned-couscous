@@ -54,7 +54,7 @@
     @media print {
       body { background: #fff; }
       .container { padding-bottom: 0; }
-      .print-bar, .config { display: none !important; }
+      .print-bar, .config, #api-error { display: none !important; }
       .sheet { border: none; padding: 0; }
     }
   </style>
@@ -94,6 +94,17 @@
     <!-- PRINTABLE SHEET PREVIEW -->
     <section class="sheet" id="sheet">
       <div class="kicker" id="sheet-date-kicker">Loading…</div>
+      <div id="api-error" class="ann" style="display:none; border-color: #ef4444; background: #fef2f2;">
+        <h4 style="color: #dc2626;">API Connection Issue</h4>
+        <div>Unable to fetch Hebrew calendar data due to browser security restrictions.</div>
+        <div style="margin-top: 6px; font-size: 14px;">
+          <strong>Solutions:</strong><br>
+          • Use a local web server: <code>python -m http.server</code><br>
+          • Or upload to any web hosting service<br>
+          • Manual input still works for prayer times & announcements
+        </div>
+        <div style="margin-top: 8px;"><button class="btn secondary" onclick="refreshAll()" style="padding: 6px 12px; font-size: 14px;">Retry</button></div>
+      </div>
       <h1 id="sheet-parsha">—</h1>
       <div class="meta" id="sheet-meta">
         <span id="sheet-he-date-en">—</span>
@@ -221,12 +232,16 @@
         const y = now.getFullYear(); const m = String(now.getMonth()+1).padStart(2,'0'); const d = String(now.getDate()).padStart(2,'0');
         const url = `https://www.hebcal.com/zmanim?cfg=json&zip=${ZIP}&date=${y}-${m}-${d}&timezid=${encodeURIComponent(TZID)}`;
         const res = await fetch(url);
+        if (!res.ok) return false; // API error, assume it's not after sunset
         const json = await res.json();
         const sunsetIso = json.times && json.times.sunset; // ISO string
         if (!sunsetIso) return false;
         const sunset = new Date(sunsetIso);
         return now.getTime() >= sunset.getTime();
-      } catch { return false; }
+      } catch { 
+        // If we can't determine sunset, default to false to be safe
+        return false; 
+      }
     }
 
     // Format helpers
@@ -241,37 +256,78 @@
       const gm = String(shabbatDate.getMonth()+1).padStart(2,'0');
       const gd = String(shabbatDate.getDate()).padStart(2,'0');
 
-      const [zmanim, calendar, conv] = await Promise.all([
-        fetch(`https://www.hebcal.com/zmanim?cfg=json&zip=${ZIP}&date=${gy}-${gm}-${gd}&timezid=${encodeURIComponent(TZID)}`).then(r=>r.json()).catch(()=>({})),
-        fetch(`https://www.hebcal.com/hebcal?cfg=json&v=1&maj=on&min=on&mod=on&nx=on&mf=on&ss=on&s=on&geo=zip&zip=${ZIP}&m=50&leyning=on&year=${gy}&month=${gm}`).then(r=>r.json()).catch(()=>({})),
-        fetch(`https://www.hebcal.com/converter?cfg=json&g2h=1&gy=${gy}&gm=${gm}&gd=${gd}`).then(r=>r.json()).catch(()=>({}))
-      ]);
-
-      // Shkiyah (sunset)
-      const sunset = (zmanim.times && zmanim.times.sunset) ? fmtTime(zmanim.times.sunset) : '—';
-
-      // Parsha or holiday for the exact Shabbat date
-      let parshaEn = '—';
-      let parshaHe = '—';
       try {
-        const events = (calendar.items || []).filter(ev => ev.date && ev.date.startsWith(`${gy}-${gm}-${gd}`));
-        // Priority: holiday (maj/min/mod) > parashat
-        const holiday = events.find(ev => (ev.category === 'holiday' || ev.category === 'roshchodesh' || ev.subcat === 'holiday'));
-        const sedra = events.find(ev => /parashat/i.test(ev.title || ''));
-        const chosen = holiday || sedra || events[0];
-        if (chosen){
-          // English: If Parashat X -> Ashkenazi transliteration already provided by Hebcal title
-          parshaEn = chosen.title || '—';
-          parshaEn = parshaEn.replace(/^Parashat\s+/, 'Parsha ');
-          parshaHe = chosen.hebrew || '—';
-        }
-      } catch {}
+        // Try to fetch data with timeout
+        const timeoutPromise = (ms) => new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('API timeout')), ms));
 
-      // Hebrew date (both forms)
-      const heEn = (conv && conv.hd && conv.hm && conv.hy) ? `${conv.hd} ${conv.hm} ${conv.hy}` : '—';
-      const heHe = (conv && conv.hebrew) ? conv.hebrew : '—';
+        const [zmanim, calendar, conv] = await Promise.race([
+          Promise.all([
+            fetch(`https://www.hebcal.com/zmanim?cfg=json&zip=${ZIP}&date=${gy}-${gm}-${gd}&timezid=${encodeURIComponent(TZID)}`).then(async r => {
+              if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+              return r.json();
+            }),
+            fetch(`https://www.hebcal.com/hebcal?cfg=json&v=1&maj=on&min=on&mod=on&nx=on&mf=on&ss=on&s=on&geo=zip&zip=${ZIP}&m=50&leyning=on&year=${gy}&month=${gm}`).then(async r => {
+              if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+              return r.json();
+            }),
+            fetch(`https://www.hebcal.com/converter?cfg=json&g2h=1&gy=${gy}&gm=${gm}&gd=${gd}`).then(async r => {
+              if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+              return r.json();
+            })
+          ]),
+          timeoutPromise(10000)
+        ]);
 
-      return { sunset, parshaEn, parshaHe, heEn, heHe };
+        // Hide error message on success
+        document.getElementById('api-error').style.display = 'none';
+
+        // Shkiyah (sunset)
+        const sunset = (zmanim.times && zmanim.times.sunset) ? fmtTime(zmanim.times.sunset) : '—';
+
+        // Parsha or holiday for the exact Shabbat date
+        let parshaEn = '—';
+        let parshaHe = '—';
+        try {
+          const events = (calendar.items || []).filter(ev => ev.date && ev.date.startsWith(`${gy}-${gm}-${gd}`));
+          // Priority: holiday (maj/min/mod) > parashat
+          const holiday = events.find(ev => (ev.category === 'holiday' || ev.category === 'roshchodesh' || ev.subcat === 'holiday'));
+          const sedra = events.find(ev => /parashat/i.test(ev.title || ''));
+          const chosen = holiday || sedra || events[0];
+          if (chosen){
+            // English: If Parashat X -> Ashkenazi transliteration already provided by Hebcal title
+            parshaEn = chosen.title || '—';
+            parshaEn = parshaEn.replace(/^Parashat\s+/, 'Parsha ');
+            parshaHe = chosen.hebrew || '—';
+          }
+        } catch {}
+
+        // Hebrew date (both forms)
+        const heEn = (conv && conv.hd && conv.hm && conv.hy) ? `${conv.hd} ${conv.hm} ${conv.hy}` : '—';
+        const heHe = (conv && conv.hebrew) ? conv.hebrew : '—';
+
+        return { sunset, parshaEn, parshaHe, heEn, heHe, success: true };
+      } catch (error) {
+        console.error('Hebcal API error:', error);
+        
+        // Show error message
+        document.getElementById('api-error').style.display = 'block';
+        
+        // Return fallback data
+        return getFallbackData(shabbatDate);
+      }
+    }
+
+    function getFallbackData(shabbatDate) {
+      // Basic fallback when API is unavailable
+      return {
+        sunset: '—',
+        parshaEn: 'Parsha information unavailable',
+        parshaHe: '—',
+        heEn: '—',
+        heHe: '—',
+        success: false
+      };
     }
 
     function setSheet(shabbatDate, data){
