@@ -143,6 +143,11 @@
     // DOM helpers
     const $ = (id) => document.getElementById(id);
 
+    // Get announcements elements first (needed by saveDraft)
+    const ann = $('announcements');
+    const annBox = $('ann-box');
+    const annContent = $('ann-content');
+
     // Bind manual inputs to preview
     ['erev-mincha','erev-maariv','shabbat-mincha','shabbat-maariv'].forEach(id => {
       const input = $(id); const out = $('out-' + id);
@@ -152,9 +157,6 @@
     });
 
     // Announcements show/hide
-    const ann = $('announcements');
-    const annBox = $('ann-box');
-    const annContent = $('ann-content');
     function updateAnnouncements() {
       const txt = ann.value.trim();
       if (!txt) { annBox.style.display = 'none'; annContent.innerHTML = ''; }
